@@ -9,6 +9,7 @@
 export interface SimilarityResult {
   score: number;
   isSimilar: boolean;
+  distance:number;
 }
 
 export class SimilarityService {
@@ -66,6 +67,7 @@ export class SimilarityService {
     return {
       score,
       isSimilar: score >= this.threshold,
+      distance: 1 - score,
     };
   }
 

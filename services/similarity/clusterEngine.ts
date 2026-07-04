@@ -1,5 +1,7 @@
+import { nanoid } from "nanoid";
 import { EmbeddedComment } from "./embeddingService";
-
+import { randomUUID } from "crypto";
+import { similarityService } from "./similarityService";
 export interface Cluster {
     id:string;
 
@@ -10,6 +12,8 @@ export interface Cluster {
     representative: EmbeddedComment;
 
     confidence: number;
+
+    averageSimilarity: number,
 
     createdAt: Date;
 
@@ -42,20 +46,36 @@ export class ClusterEngine {
     cluster(
         comments: EmbeddedComment[]
     ):Cluster[] {
-        throw new Error(
-            "cluster() not implemented."
-        );
+        const clusters: Cluster[] = [];
+
+        for ( const comment of comments) {
+            const {
+                cluster,
+                similarity,
+            } = this.findBestCluster(
+                comment,
+                clusters
+            );
+
+            if(
+                cluster && 
+                similarity >= this.options.similarityThreshold
+            ) {
+                this.addComment(
+                    cluster,
+                    comment
+                );
+            } else {
+                clusters.push(
+                    this.createCluster(comment)
+                );
+            }
+        }
+
+        return clusters;
     }
 
-    // Creates a brand new cluster.
-
-    private createCluster(
-        comment:EmbeddedComment
-    ):Cluster{
-        throw new Error(
-            "createCluster() not implemented."
-        );
-    }
+    
 
     // Finds the best matching cluster
     // for a Comment.
@@ -67,41 +87,82 @@ export class ClusterEngine {
         cluster: Cluster | null,
         similarity: number;
     } {
-        throw new Error(
-            "findBestCluster() not implemented."
-        );
+        if (clusters.length === 0){
+            return {
+                cluster: null,
+                similarity:0,
+            };
+        }
+
+        let bestCluster: Cluster | null = null;
+        let bestSimilarity = -1;
+
+        for(const cluster of clusters) {
+            const result = similarityService.compare(
+                comment.embedding,
+                cluster.centroid,
+            );
+
+            if(result.score > bestSimilarity) {
+                bestSimilarity = result.score;
+                bestCluster = cluster;
+            }
+        }
+
+        return {
+            cluster: bestCluster,
+
+            similarity: bestSimilarity,
+        };
     }
 
     // Adds a comment to an existing cluster.
 
     private addComment(
         cluster: Cluster,
-        comment: EmbeddedComment
+        comment: EmbeddedComment,
+        recalculatedCentroid = true,
     ): void {
-        throw new Error(
-            "addComment() not implemented."
-        );
+        cluster.comments.push(comment);
+
+        this.updateCentroid(cluster);
+
+        // Representative will be implemented in Commit 5
+        this.updateRepresentative(cluster);
+        // Confidence will be implemented in commit 6
+        cluster.confidence = this.calculateConfidence(cluster);
+
+        // Update Timestamp
+        cluster.updatedAt = new Date();
     }
 
-    // Recomputes the centroid
-    // after a new comment joins.
-
-    private updateCentroid(
-        cluster: Cluster
-    ): void {
-        throw new Error(
-            "updateCentroid() not implemented."
-        );
-    }
-
+  
     // Updates the representative comment.
 
     private updateRepresentative(
         cluster: Cluster
     ): void {
-        throw new Error(
-            "updateRepresentative() not implemented."
-        );
+        if(cluster.comments.length === 0) {
+            return;
+        }
+
+        let representative = cluster.comments[0];
+
+        let bestScore = -1;
+
+        for(const comment of cluster.comments) {
+            const similarity = similarityService.compare(
+                comment.embedding,
+                cluster.centroid
+            );
+
+            if(similarity.score > bestScore) {
+                bestScore = similarity.score;
+                representative = comment;
+            }
+        }
+
+        cluster.representative = representative;
     }
 
     // Recalculates confidence.
@@ -109,15 +170,80 @@ export class ClusterEngine {
     private calculateConfidence(
         cluster:Cluster
     ):number {
-        throw new Error(
-            "calculateConfidence() not implemented."
+        if(cluster.comments.length === 0) {
+            return 0;
+        }
+        let totalSimilarity = 0;
+
+        for(const comment of cluster.comments) {
+            totalSimilarity += similarityService.compare(
+                comment.embedding,
+                cluster.centroid
+            ).score;
+        }
+
+        return (
+            totalSimilarity / cluster.comments.length
         );
     }
 
     // Generates a unique cluster id.
 
     private generateClusterId(): string {
-        return crypto.randomUUID();
+        return nanoid();
+    }
+
+    private createCluster (
+        comment: EmbeddedComment
+    ): Cluster {
+        const now = new Date();
+
+        
+        return {
+            
+            id:this.generateClusterId(),
+
+            comments: [comment],
+
+            centroid: [...comment.embedding],
+
+            representative: comment,
+
+            averageSimilarity: 1,
+
+            confidence: 1,
+
+            createdAt: now,
+
+            updatedAt: now,
+        };
+    }
+
+    private updateCentroid(
+        cluster: Cluster
+    ): void {
+        if(cluster.comments.length === 0) {
+            return ;
+        }
+
+        const dimensions = cluster.comments[0].embedding.length;
+
+        const centroid = new Array(dimensions).fill(0);
+
+        for(const comment of cluster.comments) {
+            for (let i=0;i<dimensions;i++){
+                centroid[i] += comment.embedding[i];
+            }
+        }
+
+        for(let i=0;i<dimensions;i++){
+            centroid[i] /= cluster.comments.length;
+        }
+
+        cluster.centroid = centroid;
+        cluster.updatedAt = new Date();
+
+
     }
 }
 
