@@ -13,6 +13,13 @@ export interface EmbeddingGenerationResult {
     cacheMisses: number;
 }
 
+interface CachedEmbedding {
+    normalizedText:string;
+    embedding: number[];
+    embeddingModel: string;
+    dimensions: number;
+}
+
 class EmbeddingService {
 
     /**
